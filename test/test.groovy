@@ -11,6 +11,7 @@ import me.biocomp.hubitat_ci.api.common_api.Location
 import me.biocomp.hubitat_ci.api.common_api.Log
 import me.biocomp.hubitat_ci.app.HubitatAppSandbox
 import me.biocomp.hubitat_ci.validation.Flags
+import spock.lang.Shared
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -229,6 +230,64 @@ class Test extends
                             deviceId: "Temp2DeviceId",
                             displayName: "Temp2 display name"
                     ]
+            ]
+    }
+
+    final static def commonResponsePart = "deviceId=123,deviceName=My\\ display\\ name,groupId=null,groupName=null,hubId=null,hubName=My\\ name,locationId=null,locationName=null,unit="
+
+    Event makeMockEvent(String name, String value) {
+        Mock(Event){
+            _*getName() >> name
+            _*getValue() >> value
+            _*getUnit() >> "my unit"
+            _*getDeviceId() >> 123
+            _*getDisplayName() >> "My display name"
+            _*getDevice() >> Mock(DeviceWrapper){
+                _*getHub() >> Mock(Hub){
+                    _*getId() >> 789
+                    _*getName() >> "My name"
+                }
+            }
+        }
+    }
+
+    static String makeRequestText(String name, String unit, String fields) {
+        "${name},${commonResponsePart}${unit} ${fields}"
+    }
+
+    @Unroll
+    def "handleEvent(#event) forms proper partial request"() {
+        setup:
+            String capturedData
+
+            def script = sandbox.run(
+                    api: api,
+                    validationFlags: [Flags.DontValidateSubscriptions],
+                    customizeScriptBeforeRun: {
+                        script->script.getMetaClass().queueToInfluxDb = {
+                            capturedData = it
+                        }
+                    })
+
+            script.installed()
+            script.updated()
+
+
+        when:
+            script.handleEvent(event)
+
+        then:
+            capturedData == result
+
+        where:
+            event << [
+                makeMockEvent("temperature", "42"),
+                makeMockEvent("acceleration", "active")
+            ]
+
+            result << [
+                makeRequestText("temperature", "my\\ unit", "value=42"),
+                makeRequestText("acceleration", "acceleration", "value=\"active\",valueBinary=1i")
             ]
     }
 }
