@@ -11,6 +11,7 @@ import me.biocomp.hubitat_ci.api.common_api.Location
 import me.biocomp.hubitat_ci.api.common_api.Log
 import me.biocomp.hubitat_ci.app.HubitatAppSandbox
 import me.biocomp.hubitat_ci.validation.Flags
+import spock.lang.Shared
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -230,5 +231,115 @@ class Test extends
                             displayName: "Temp2 display name"
                     ]
             ]
+    }
+
+    final static def commonResponsePart = "deviceId=123,deviceName=My\\ display\\ name,groupId=null,groupName=null,hubId=null,hubName=My\\ name,locationId=null,locationName=null,unit="
+
+    Event makeMockEvent(String name, String value) {
+        Mock(Event){
+            _*getName() >> name
+            _*getValue() >> value
+            _*getUnit() >> "my unit"
+            _*getDeviceId() >> 123
+            _*getDisplayName() >> "My display name"
+            _*getDevice() >> Mock(DeviceWrapper){
+                _*getHub() >> Mock(Hub){
+                    _*getId() >> 789
+                    _*getName() >> "My name"
+                }
+            }
+        }
+    }
+
+    static String makeRequestText(String name, String unit, String fields) {
+        "${name},${commonResponsePart}${unit} ${fields}"
+    }
+
+    def "handleEvent() forms proper partial request for all supported cases"() {
+        setup:
+            List<Map<String, String>> testCases = []
+
+            final def addTestCase = { String measurement, String value, String expectedUnit, String expectedValues ->
+                testCases << [
+                    measurement: measurement,
+                    value: value,
+                    expectedUnit: expectedUnit,
+                    expectedValues: expectedValues
+                ]
+            }
+
+            final def addBinaryTestCase = { String measurement, String specialValue, int expectedBinary ->
+                assert expectedBinary == 0 || expectedBinary == 1
+
+                testCases << [
+                        measurement: measurement,
+                        value: specialValue,
+                        expectedUnit: measurement,
+                        expectedValues: "value=\"${specialValue}\",valueBinary=${expectedBinary}i"
+                ]
+
+                testCases << [
+                        measurement: measurement,
+                        value: "__other__",
+                        expectedUnit: measurement,
+                        expectedValues: "value=\"__other__\",valueBinary=${Math.abs(expectedBinary - 1)}i"
+                ]
+            }
+
+            addTestCase("temperature", "42", "my\\ unit", "value=42")
+            addBinaryTestCase("acceleration", "active", 1)
+            addBinaryTestCase("alarm", "off", 0)
+            addBinaryTestCase("button", "pushed", 0)
+            addBinaryTestCase("carbonMonoxide", "detected", 1)
+            addBinaryTestCase("consumableStatus", "good", 1)
+            addBinaryTestCase("contact", "closed", 1)
+            addBinaryTestCase("door", "closed", 1)
+            addBinaryTestCase("lock", "locked", 1)
+            addBinaryTestCase("motion", "active", 1)
+            addBinaryTestCase("mute", "muted", 1)
+            addBinaryTestCase("presence", "present", 1)
+            addBinaryTestCase("shock", "detected", 1)
+            addBinaryTestCase("sleeping", "sleeping", 1)
+            addBinaryTestCase("smoke", "detected", 1)
+            addBinaryTestCase("sound", "detected", 1)
+            addBinaryTestCase("switch", "on", 1)
+            addBinaryTestCase("tamper", "detected", 1)
+            addBinaryTestCase("thermostatMode", "off", 0)
+            addBinaryTestCase("thermostatFanMode", "off", 0)
+            addBinaryTestCase("thermostatOperatingState", "heating", 1)
+            addBinaryTestCase("thermostatSetpointMode", "followSchedule", 0)
+            addTestCase("threeAxis", "11,22,33", "threeAxis", "valueX=11i,valueY=22i,valueZ=33i")
+            addBinaryTestCase("touch", "touched", 1)
+            addBinaryTestCase("optimisation", "active", 1)
+            addBinaryTestCase("windowFunction", "active", 1)
+            addBinaryTestCase("water", "wet", 1)
+            addBinaryTestCase("windowShade", "closed", 1)
+            addTestCase("anyNonNumericValue", "blah", "my\\ unit", "value=\"blah\"")
+            addTestCase("anyNonNumericValue", "blah 123", "my\\ unit", "value=\"blah\\ 123\"")
+            addTestCase("anyNumericValue", "123", "my\\ unit", "value=123")
+
+
+            String capturedData
+
+            def script = sandbox.run(
+                    api: api,
+                    validationFlags: [Flags.DontValidateSubscriptions],
+                    customizeScriptBeforeRun: {
+                        script->script.getMetaClass().queueToInfluxDb = {
+                            capturedData = it
+                        }
+                    })
+
+            script.installed()
+            script.updated()
+
+        for (def testCase in testCases) {
+            when:
+                capturedData = null
+                script.handleEvent(makeMockEvent(testCase.measurement, testCase.value))
+
+            then:
+                assert capturedData == makeRequestText(testCase.measurement, testCase.expectedUnit, testCase.expectedValues)
+        }
     }
 }
