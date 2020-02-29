@@ -255,9 +255,70 @@ class Test extends
         "${name},${commonResponsePart}${unit} ${fields}"
     }
 
-    @Unroll
-    def "handleEvent(#measurement, #value) forms proper partial request"() {
+    def "handleEvent() forms proper partial request for all supported cases"() {
         setup:
+            List<Map<String, String>> testCases = []
+
+            final def addTestCase = { String measurement, String value, String expectedUnit, String expectedValues ->
+                testCases << [
+                    measurement: measurement,
+                    value: value,
+                    expectedUnit: expectedUnit,
+                    expectedValues: expectedValues
+                ]
+            }
+
+            final def addBinaryTestCase = { String measurement, String specialValue, int expectedBinary ->
+                assert expectedBinary == 0 || expectedBinary == 1
+
+                testCases << [
+                        measurement: measurement,
+                        value: specialValue,
+                        expectedUnit: measurement,
+                        expectedValues: "value=\"${specialValue}\",valueBinary=${expectedBinary}i"
+                ]
+
+                testCases << [
+                        measurement: measurement,
+                        value: "__other__",
+                        expectedUnit: measurement,
+                        expectedValues: "value=\"__other__\",valueBinary=${Math.abs(expectedBinary - 1)}i"
+                ]
+            }
+
+            addTestCase("temperature", "42", "my\\ unit", "value=42")
+            addBinaryTestCase("acceleration", "active", 1)
+            addBinaryTestCase("alarm", "off", 0)
+            addBinaryTestCase("button", "pushed", 0)
+            addBinaryTestCase("carbonMonoxide", "detected", 1)
+            addBinaryTestCase("consumableStatus", "good", 1)
+            addBinaryTestCase("contact", "closed", 1)
+            addBinaryTestCase("door", "closed", 1)
+            addBinaryTestCase("lock", "locked", 1)
+            addBinaryTestCase("motion", "active", 1)
+            addBinaryTestCase("mute", "muted", 1)
+            addBinaryTestCase("presence", "present", 1)
+            addBinaryTestCase("shock", "detected", 1)
+            addBinaryTestCase("sleeping", "sleeping", 1)
+            addBinaryTestCase("smoke", "detected", 1)
+            addBinaryTestCase("sound", "detected", 1)
+            addBinaryTestCase("switch", "on", 1)
+            addBinaryTestCase("tamper", "detected", 1)
+            addBinaryTestCase("thermostatMode", "off", 0)
+            addBinaryTestCase("thermostatFanMode", "off", 0)
+            addBinaryTestCase("thermostatOperatingState", "heating", 1)
+            addBinaryTestCase("thermostatSetpointMode", "followSchedule", 0)
+            addTestCase("threeAxis", "11,22,33", "threeAxis", "valueX=11i,valueY=22i,valueZ=33i")
+            addBinaryTestCase("touch", "touched", 1)
+            addBinaryTestCase("optimisation", "active", 1)
+            addBinaryTestCase("windowFunction", "active", 1)
+            addBinaryTestCase("water", "wet", 1)
+            addBinaryTestCase("windowShade", "closed", 1)
+            addTestCase("anyNonNumericValue", "blah", "my\\ unit", "value=\"blah\"")
+            addTestCase("anyNonNumericValue", "blah 123", "my\\ unit", "value=\"blah\\ 123\"")
+            addTestCase("anyNumericValue", "123", "my\\ unit", "value=123")
+
+
             String capturedData
 
             def script = sandbox.run(
@@ -272,71 +333,13 @@ class Test extends
             script.installed()
             script.updated()
 
+        for (def testCase in testCases) {
+            when:
+                capturedData = null
+                script.handleEvent(makeMockEvent(testCase.measurement, testCase.value))
 
-        when:
-            script.handleEvent(makeMockEvent(measurement, value))
-
-        then:
-            capturedData == makeRequestText(measurement, expectedUnit, expectedValues)
-
-        where:
-            measurement                | value            || expectedUnit               | expectedValues
-            "temperature"              | "42"             || "my\\ unit"                | "value=42"
-            "acceleration"             | "active"         || "acceleration"             | "value=\"active\",valueBinary=1i"
-            "acceleration"             | "__other__"      || "acceleration"             | "value=\"__other__\",valueBinary=0i"
-            "alarm"                    | "off"            || "alarm"                    | "value=\"off\",valueBinary=0i"
-            "alarm"                    | "__other__"      || "alarm"                    | "value=\"__other__\",valueBinary=1i"
-            "button"                   | "pushed"         || "button"                   | "value=\"pushed\",valueBinary=0i"
-            "button"                   | "__other__"      || "button"                   | "value=\"__other__\",valueBinary=1i"
-            "carbonMonoxide"           | "detected"       || "carbonMonoxide"           | "value=\"detected\",valueBinary=1i"
-            "carbonMonoxide"           | "__other__"      || "carbonMonoxide"           | "value=\"__other__\",valueBinary=0i"
-            "consumableStatus"         | "good"           || "consumableStatus"         | "value=\"good\",valueBinary=1i"
-            "consumableStatus"         | "__other__"      || "consumableStatus"         | "value=\"__other__\",valueBinary=0i"
-            "contact"                  | "closed"         || "contact"                  | "value=\"closed\",valueBinary=1i"
-            "contact"                  | "__other__"      || "contact"                  | "value=\"__other__\",valueBinary=0i"
-            "door"                     | "closed"         || "door"                     | "value=\"closed\",valueBinary=1i"
-            "door"                     | "__other__"      || "door"                     | "value=\"__other__\",valueBinary=0i"
-            "lock"                     | "locked"         || "lock"                     | "value=\"locked\",valueBinary=1i"
-            "lock"                     | "__other__"      || "lock"                     | "value=\"__other__\",valueBinary=0i"
-            "motion"                   | "active"         || "motion"                   | "value=\"active\",valueBinary=1i"
-            "motion"                   | "__other__"      || "motion"                   | "value=\"__other__\",valueBinary=0i"
-            "mute"                     | "muted"          || "mute"                     | "value=\"muted\",valueBinary=1i"
-            "mute"                     | "__other__"      || "mute"                     | "value=\"__other__\",valueBinary=0i"
-            "presence"                 | "present"        || "presence"                 | "value=\"present\",valueBinary=1i"
-            "presence"                 | "__other__"      || "presence"                 | "value=\"__other__\",valueBinary=0i"
-            "shock"                    | "detected"       || "shock"                    | "value=\"detected\",valueBinary=1i"
-            "shock"                    | "__other__"      || "shock"                    | "value=\"__other__\",valueBinary=0i"
-            "sleeping"                 | "sleeping"       || "sleeping"                 | "value=\"sleeping\",valueBinary=1i"
-            "sleeping"                 | "__other__"      || "sleeping"                 | "value=\"__other__\",valueBinary=0i"
-            "smoke"                    | "detected"       || "smoke"                    | "value=\"detected\",valueBinary=1i"
-            "smoke"                    | "__other__"      || "smoke"                    | "value=\"__other__\",valueBinary=0i"
-            "sound"                    | "detected"       || "sound"                    | "value=\"detected\",valueBinary=1i"
-            "sound"                    | "__other__"      || "sound"                    | "value=\"__other__\",valueBinary=0i"
-            "switch"                   | "on"             || "switch"                   | "value=\"on\",valueBinary=1i"
-            "switch"                   | "__other__"      || "switch"                   | "value=\"__other__\",valueBinary=0i"
-            "tamper"                   | "detected"       || "tamper"                   | "value=\"detected\",valueBinary=1i"
-            "tamper"                   | "__other__"      || "tamper"                   | "value=\"__other__\",valueBinary=0i"
-            "thermostatMode"           | "off"            || "thermostatMode"           | "value=\"off\",valueBinary=0i"
-            "thermostatMode"           | "__other__"      || "thermostatMode"           | "value=\"__other__\",valueBinary=1i"
-            "thermostatFanMode"        | "off"            || "thermostatFanMode"        | "value=\"off\",valueBinary=0i"
-            "thermostatFanMode"        | "__other__"      || "thermostatFanMode"        | "value=\"__other__\",valueBinary=1i"
-            "thermostatOperatingState" | "heating"        || "thermostatOperatingState" | "value=\"heating\",valueBinary=1i"
-            "thermostatOperatingState" | "__other__"      || "thermostatOperatingState" | "value=\"__other__\",valueBinary=0i"
-            "thermostatSetpointMode"   | "followSchedule" || "thermostatSetpointMode"   | "value=\"followSchedule\",valueBinary=0i"
-            "thermostatSetpointMode"   | "__other__"      || "thermostatSetpointMode"   | "value=\"__other__\",valueBinary=1i"
-            "threeAxis"                | "11,22,33"       || "threeAxis"                | "valueX=11i,valueY=22i,valueZ=33i"
-            "touch"                    | "touched"        || "touch"                    | "value=\"touched\",valueBinary=1i"
-            "touch"                    | "__other__"      || "touch"                    | "value=\"__other__\",valueBinary=0i"
-            "optimisation"             | "active"         || "optimisation"             | "value=\"active\",valueBinary=1i"
-            "optimisation"             | "__other__"      || "optimisation"             | "value=\"__other__\",valueBinary=0i"
-            "windowFunction"           | "active"         || "windowFunction"           | "value=\"active\",valueBinary=1i"
-            "windowFunction"           | "__other__"      || "windowFunction"           | "value=\"__other__\",valueBinary=0i"
-            "water"                    | "wet"            || "water"                    | "value=\"wet\",valueBinary=1i"
-            "water"                    | "__other__"      || "water"                    | "value=\"__other__\",valueBinary=0i"
-            "windowShade"              | "closed"         || "windowShade"              | "value=\"closed\",valueBinary=1i"
-            "windowShade"              | "__other__"      || "windowShade"              | "value=\"__other__\",valueBinary=0i"
-            "anyNonNumericValue"       | "blah"           || "my\\ unit"                | "value=\"blah\""
-            "anyNonNumericValue"       | "blah 123"       || "my\\ unit"                | "value=\"blah\\ 123\""
-            "anyNumericValue"          | "123"            || "my\\ unit"                | "value=123"
+            then:
+                assert capturedData == makeRequestText(testCase.measurement, testCase.expectedUnit, testCase.expectedValues)
+        }
     }
 }
